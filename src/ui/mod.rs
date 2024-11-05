@@ -141,7 +141,7 @@ impl Ui {
         Ok(())
     }
 
-    /// Use exeternal docker cli to exec into a container
+    /// Use external docker cli to exec into a container
     async fn exec(&mut self) {
         let exec_mode = self.gui_state.lock().get_exec_mode();
 
@@ -219,7 +219,7 @@ impl Ui {
     }
 }
 
-/// Frequent data required by multiple framde drawing functions, can reduce mutex reads by placing it all in here
+/// Frequent data required by multiple frame drawing functions, can reduce mutex reads by placing it all in here
 #[derive(Debug)]
 pub struct FrameData {
     columns: Columns,
