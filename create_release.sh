@@ -104,7 +104,6 @@ ask_changelog_update() {
 	else
 		exit
 	fi
-
 }
 
 # Edit the release-body to include new lines from changelog
@@ -230,6 +229,17 @@ cross_build_x86_windows() {
 	cross build --target x86_64-pc-windows-gnu --release
 }
 
+# Build, using zig-build, for Apple silicon
+zig_build_aarch64_apple() {
+	# mkdir /workspace/oxker/target
+	echo -e "${YELLOW}docker run --rm -v $(pwd):/io -w /io ghcr.io/rust-cross/cargo-zigbuild cargo zigbuild --release --target aarch64-apple-darwin${RESET}"
+	docker run --rm -v "$(pwd):/io" -w /io ghcr.io/rust-cross/cargo-zigbuild cargo zigbuild --release --target aarch64-apple-darwin
+	if ask_yn "sudo chown $(pwd)/target"; then
+		echo -e "${YELLOW}sudo chown -R vscode:vscode $(pwd)/target${RESET}"
+		sudo chown -R vscode:vscode "$(pwd)/target"
+	fi
+}
+
 # Build all releases that GitHub workflow would
 # This will download GB's of docker images
 cross_build_all() {
@@ -241,6 +251,8 @@ cross_build_all() {
 	cross_build_x86_linux
 	ask_continue
 	cross_build_x86_windows
+	ask_continue
+	zig_build_aarch64_apple
 	ask_continue
 }
 
@@ -276,12 +288,14 @@ build_container_amd64() {
 	docker build --platform linux/amd64 --no-cache -t oxker_amd64 -f containerised/Dockerfile .
 	docker save -o /tmp/oxker_amd64.tar oxker_amd64
 }
+
 # build container for aarm64 platform
 build_container_arm64() {
 	echo -e "${YELLOW}docker build  --platform linux/arm64 --no-cache -t oxker_arm64 --no-cache -f containerised/Dockerfile .; docker save -o /tmp/oxker_arm64.tar oxker_arm64${RESET}"
 	docker build --platform linux/arm64 --no-cache -t oxker_arm64 -f containerised/Dockerfile .
 	docker save -o /tmp/oxker_arm64.tar oxker_arm64
 }
+
 # build container for armv6 platform
 build_container_armv6() {
 	echo -e "${YELLOW}docker build  --platform linux/arm/v6 --no-cache -t oxker_armv6 --no-cache -f containerised/Dockerfile .; docker save -o /tmp/oxker_armv6.tar oxker_armv6${RESET}"
@@ -296,6 +310,7 @@ build_container_all() {
 	build_container_arm64
 	ask_continue
 	build_container_armv6
+	ask_continue
 }
 
 # Full flow to create a new release
@@ -371,17 +386,17 @@ release_flow() {
 }
 
 build_choice() {
-	cmd=(dialog --backtitle "Choose option" --radiolist "choose" 14 80 16)
+	cmd=(dialog --backtitle "Choose option" --keep-tite --radiolist "choose" 14 80 16)
 	options=(
 		1 "x86 musl linux" off
 		2 "aarch64 musl linux" off
 		3 "armv6 musl linux" off
-		4 "x86 windows" off
-		5 "all" off
+		4 "aarch64 apple" off
+		5 "x86 windows" off
+		6 "all" off
 	)
 	choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 	exitStatus=$?
-	clear
 	if [ $exitStatus -ne 0 ]; then
 		exit
 	fi
@@ -403,10 +418,14 @@ build_choice() {
 			exit
 			;;
 		4)
-			cross_build_x86_windows
+			zig_build_aarch64_apple
 			exit
 			;;
 		5)
+			cross_build_x86_windows
+			exit
+			;;
+		6)
 			cross_build_all
 			exit
 			;;
@@ -415,7 +434,7 @@ build_choice() {
 }
 
 build_container_choice() {
-	cmd=(dialog --backtitle "Choose option" --radiolist "choose" 14 80 16)
+	cmd=(dialog --backtitle "Choose option" --keep-tite --radiolist "choose" 14 80 16)
 	options=(
 		1 "x86 " off
 		2 "aarch64" off
@@ -424,7 +443,6 @@ build_container_choice() {
 	)
 	choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 	exitStatus=$?
-	clear
 	if [ $exitStatus -ne 0 ]; then
 		exit
 	fi
@@ -455,7 +473,7 @@ build_container_choice() {
 }
 
 main() {
-	cmd=(dialog --backtitle "Choose option" --radiolist "choose" 14 80 16)
+	cmd=(dialog --backtitle "Choose option" --keep-tite --radiolist "choose" 14 80 16)
 	options=(
 		1 "test" off
 		2 "release" off
@@ -464,7 +482,6 @@ main() {
 	)
 	choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 	exitStatus=$?
-	clear
 	if [ $exitStatus -ne 0 ]; then
 		exit
 	fi

@@ -13,7 +13,7 @@
 	// Show self (the oxker container) when running as a docker container
 	"show_self": false,
 	// Show std_err in logs
-	"show_std_err": false,
+	"show_std_err": true,
 	// Show a timestamp for every log entry
 	"show_timestamp": true,
 	// Don't draw gui - for debugging - mostly pointless
@@ -29,12 +29,15 @@
 	// "save_dir": "$HOME",
 	// Force use of docker cli when execing into containers, honestly mostly pointless
 	"use_cli": false,
+	// Show the logs section - this can be changed during operation with the log_section_toggle key
+	"show_logs": true,
 	//////////////////
 	// Custom Keymap //
 	//////////////////
 	// Available keys are;
 	// 1) a-z and A-Z
 	// 2) 0-9
+	// WARNING if using the \ key, it needs to be escaped, e.g. "log_section_toggle": ["\\"]
 	// 3) / \ , . # ' [ ] ; = -
 	// 3) F1-F12
 	// 4) backspace, tab, backtab, delete, end, esc, home, insert, pagedown, pageup, left, right, up, down
@@ -144,6 +147,18 @@
 		// Toggle mouse capture
 		"toggle_mouse_capture": [
 			"m"
+		],
+		// Reduce the height of the logs list section
+		"log_section_height_decrease": [
+			"-"
+		],
+		// Increase the height of the logs list section
+		"log_section_height_increase": [
+			"+"
+		],
+		// Toggle visibility of the log section
+		"log_section_toggle": [
+			"\\"
 		]
 	},
 	////////////////////

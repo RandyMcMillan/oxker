@@ -1,3 +1,74 @@
+# <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.5'>v0.10.5</a>
+### 2025-06-19
+
+### Reverts
++ Bollard update rolled back, closes [#66](https://github.com/mrjackwills/oxker/issues/66), [aac9c6b5](https://github.com/mrjackwills/oxker/commit/aac9c6b598ce6c23b14f5a8b0116e662b18074d2)
+
+ # <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.4'>v0.10.4</a>
+### 2025-06-18
+
+### Chores
++ .devcontainer updated, [324f8268](https://github.com/mrjackwills/oxker/commit/324f8268278081504d5357f2ed89b78ca2c25d04)
++ dependencies updated, [0ace9dd6](https://github.com/mrjackwills/oxker/commit/0ace9dd662144a589341779a64d7fcd8de7d9978), [a6360075](https://github.com/mrjackwills/oxker/commit/a636007547280b3b3db69374601dbece4bc21eef)
++ Rust 1.87.0 linting, [395b1aa7](https://github.com/mrjackwills/oxker/commit/395b1aa7e997a528e4f21e66f5f859001c1c3ec1), [67e5888e](https://github.com/mrjackwills/oxker/commit/67e5888e008cfd504c10e47f678f9351c838be99)
+
+### Docs
++ example config files updated, [63ab7de7](https://github.com/mrjackwills/oxker/commit/63ab7de72897de460f31181c5a42befbee2f91d3), [8fb5ac4a](https://github.com/mrjackwills/oxker/commit/8fb5ac4a945b75f3fcd118c53be1202ccbc43c59)
++ README.md updated, link to directories crate, closes [#65](https://github.com/mrjackwills/oxker/issues/65), [c2bfe329](https://github.com/mrjackwills/oxker/commit/c2bfe3296563daf4b7f077469f3eeff6895720b0)
+
+### Features
++ log panel size configurable, closes [#50](https://github.com/mrjackwills/oxker/issues/50), use the `-` or `=` keys to change the height of the logs panel, or `\` to toggle visibility. Automatically hide the logs panel using a new config item `show_logs`, see `example_config/*` files for more details, [6edf99e0](https://github.com/mrjackwills/oxker/commit/6edf99e0846bb4134d8ee5b646065b8cda8074d7)
++ build release binaries for aarch64-apple-darwin, closes [#62](https://github.com/mrjackwills/oxker/issues/62), personally untested on MacOS - but others suggest it works as expected, [e7114d2f](https://github.com/mrjackwills/oxker/commit/e7114d2f5e0ed8935943be64726fc2d90464a777), [2e850090](https://github.com/mrjackwills/oxker/commit/2e8500902a515a246f9d9a503b4350849d634978)
+
+### Fixes
++ merge args color/raw fix, [d1983987](https://github.com/mrjackwills/oxker/commit/d198398795698a21d81d3fd20231c482cc346ab5)
+
+### Refactors
++ reduce cloning of the logs text items, can expect 40-50% reduction in CPU and memory usage in certain common situations, [ecefa302](https://github.com/mrjackwills/oxker/commit/ecefa302b9ef5320ad4cce0b606aca70a7b459e2)
++ dead code removed, [b40b6b19](https://github.com/mrjackwills/oxker/commit/b40b6b197e4e5fbdab083bc918d1a5d2750597f3)
+
+### Tests
++ add more whole layout tests, [4b81c6ca](https://github.com/mrjackwills/oxker/commit/4b81c6caaf12028d7527c3f23cd2de6d1503e223)
+
+# <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.3'>v0.10.3</a>
+### 2025-04-22
+
+### Chores
++ dependencies updated, [bbfd2462](https://github.com/mrjackwills/oxker/commit/bbfd2462a1f45008587b488e8c6049ee76da72f2)
+
+### Tests
++ fix tests for MacOS, closes [#61](https://github.com/mrjackwills/oxker/issues/61), [cfc2decd](https://github.com/mrjackwills/oxker/commit/cfc2decd8d237f1ac3f0bdb2b3d5581684064448)
+
+# <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.2'>v0.10.2</a>
+### 2025-04-19
+
+### Chores
++ dependencies updated, [1345ecb1](https://github.com/mrjackwills/oxker/commit/1345ecb1a2b17ad3d288f2de2058c0777b84f93b)
+
+### Tests
++ use a fixed version String, `0.00.000`, in tests, [230174b3](https://github.com/mrjackwills/oxker/commit/230174b3c327c3f217cdcf8fce07d5d9ddea1033)
+
+# <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.1'>v0.10.1</a>
+### 2025-04-18
+
+### Chores
++ dependencies updated, [8f959c54](https://github.com/mrjackwills/oxker/commit/8f959c5408995527485e817514c3f4a10bca31bd), [69d1801e](https://github.com/mrjackwills/oxker/commit/69d1801ea1e71e7d84c00fb2142ba27577e3bb73), [188490e1](https://github.com/mrjackwills/oxker/commit/188490e13fd1255eecb305ac0a99a7a1913e0294)
++ Rust 1.86.0 linting, [9acf6033](https://github.com/mrjackwills/oxker/commit/9acf60334c5224faa9ee4ecf7030b2e9b13b7d67)
+
+### Docs
++ comment typo, [723b220c](https://github.com/mrjackwills/oxker/commit/723b220c6aa6393b8eebd84a6ddba69f35dc18b8)
+
+### Fixes
++ github workflow update, [997eebca](https://github.com/mrjackwills/oxker/commit/997eebca20a2883dcfcb35009dd4d7b0d438dec6)
++ config merging, [a468827f](https://github.com/mrjackwills/oxker/commit/a468827f02c5243b9bd4e0183fed16854ae6c851)
+
+### Refactors
++ rename ChartType to ChartVariant, [bca67116](https://github.com/mrjackwills/oxker/commit/bca67116f3b71451156a39a7b0957568b26fa183), [d0caa927](https://github.com/mrjackwills/oxker/commit/d0caa9271b6f92f52ccfe3dec69708efe54e5170)
++ rename FileType to FileFormat, [848f64d0](https://github.com/mrjackwills/oxker/commit/848f64d0da429e547a2f6c8de62e4da5f5c9a187)
+
+### Tests
++ Use insta, closes [#57](https://github.com/mrjackwills/oxker/issues/57), [9362d7b4](https://github.com/mrjackwills/oxker/commit/9362d7b481ea22eab6f902dc7f3c10150c7ddf22)
+
 # <a href='https://github.com/mrjackwills/oxker/releases/tag/v0.10.0'>v0.10.0</a>
 ### 2025-02-23
 

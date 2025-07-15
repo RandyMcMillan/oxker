@@ -110,6 +110,9 @@ impl DockerData {
     /// Get a single docker stat in order to update mem and cpu usage
     /// don't take &self, so that can tokio::spawn into it's own thread
     /// remove if from spawns hashmap when complete
+    /// Get a single docker stat in order to update mem and cpu usage
+    /// don't take &self, so that can tokio::spawn into it's own thread
+    /// remove if from spawns hashmap when complete
     async fn update_container_stat(
         app_data: Arc<Mutex<AppData>>,
         docker: Arc<Docker>,
@@ -228,7 +231,6 @@ impl DockerData {
                 None => None,
             })
             .collect::<Vec<ContainerSummary>>();
-
         self.app_data.lock().update_containers(output);
     }
 
@@ -322,7 +324,7 @@ impl DockerData {
                     self.config.show_std_err,
                 )));
             }
-        };
+        }
         self.update_all_container_stats();
         self.app_data.lock().sort_containers();
     }
@@ -445,6 +447,7 @@ impl DockerData {
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
+
     use bollard::container::{
         BlkioStats, CPUStats, CPUUsage, MemoryStats, PidsStats, Stats, StorageStats, ThrottlingData,
     };

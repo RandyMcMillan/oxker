@@ -30,6 +30,7 @@ pub struct Config {
     pub show_timestamp: bool,
     pub timezone: Option<TimeZone>,
     pub timestamp_format: String,
+    pub show_logs: bool,
     pub use_cli: bool,
 }
 
@@ -51,6 +52,7 @@ impl From<&Args> for Config {
             timezone: Self::parse_timezone(args.timezone.clone()),
             timestamp_format: Self::parse_timestamp_format(None),
             use_cli: args.use_cli,
+            show_logs: true,
         }
     }
 }
@@ -73,6 +75,7 @@ impl From<ConfigFile> for Config {
             timezone: Self::parse_timezone(config_file.timezone),
             timestamp_format: Self::parse_timestamp_format(config_file.timestamp_format),
             use_cli: config_file.use_cli.unwrap_or(false),
+            show_logs: config_file.show_logs.unwrap_or(true),
         }
     }
 }
@@ -126,19 +129,50 @@ impl Config {
     }
 
     /// Combine config from CLI into config file, the cli take priority
-    /// make sure color_logs and raw_logs can't clash
+    /// and also make sure color_logs and raw_logs can't clash
     fn merge_args(mut self, config_from_cli: Self) -> Self {
-        self.color_logs = config_from_cli.color_logs;
-        self.docker_interval_ms = config_from_cli.docker_interval_ms;
-        self.gui = config_from_cli.gui;
-        self.raw_logs = config_from_cli.raw_logs;
-        self.show_self = config_from_cli.show_self;
-        self.show_std_err = config_from_cli.show_std_err;
-        self.show_timestamp = config_from_cli.show_timestamp;
-        self.use_cli = config_from_cli.use_cli;
+        let default_args = Args::default();
+
+        if config_from_cli.color_logs != default_args.color {
+            self.color_logs = config_from_cli.color_logs;
+            self.raw_logs = !self.color_logs;
+        }
+
+        if config_from_cli.raw_logs != default_args.raw {
+            self.raw_logs = config_from_cli.raw_logs;
+            self.color_logs = !self.raw_logs;
+        }
+
+        if config_from_cli.gui != default_args.gui {
+            self.gui = config_from_cli.gui;
+        }
+
+        if config_from_cli.docker_interval_ms != default_args.docker_interval {
+            self.docker_interval_ms = config_from_cli.docker_interval_ms;
+        }
 
         if config_from_cli.docker_interval_ms < 1000 {
-            self.docker_interval_ms = 1000;
+            self.docker_interval_ms = default_args.docker_interval;
+        }
+
+        if config_from_cli.raw_logs != default_args.raw {
+            self.raw_logs = config_from_cli.raw_logs;
+        }
+
+        if config_from_cli.show_self != default_args.show_self {
+            self.show_self = config_from_cli.show_self;
+        }
+
+        if config_from_cli.show_std_err != default_args.no_std_err {
+            self.show_std_err = config_from_cli.show_std_err;
+        }
+
+        if config_from_cli.show_timestamp != default_args.timestamp {
+            self.show_timestamp = config_from_cli.show_timestamp;
+        }
+
+        if config_from_cli.use_cli != default_args.use_cli {
+            self.use_cli = config_from_cli.use_cli;
         }
 
         if let Some(host) = config_from_cli.host {
@@ -153,10 +187,7 @@ impl Config {
             self.timezone = Some(tz);
         }
 
-        if config_from_cli.raw_logs {
-            self.color_logs = false;
-        }
-        if config_from_cli.color_logs {
+        if self.color_logs && self.raw_logs {
             self.raw_logs = false;
         }
         self
@@ -232,11 +263,9 @@ mod tests {
     #[test]
     /// Test various timezones get parsed correctly
     fn test_config_parse_timezone() {
-        assert!(super::Config::parse_timezone(None).is_none());
-
         // Timezone with no offset just return None
-        for i in ["Europe/London", "Africa/Accra"] {
-            assert!(super::Config::parse_timezone(Some(i.to_owned())).is_none());
+        for i in [None, Some("UTC".to_owned())] {
+            assert!(super::Config::parse_timezone(i).is_none());
         }
 
         let expected = Some(TimeZone::get("Asia/Tokyo").unwrap());

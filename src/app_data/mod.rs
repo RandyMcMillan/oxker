@@ -14,7 +14,7 @@ use crate::{
     ENTRY_POINT,
     app_error::AppError,
     config::Config,
-    ui::{GuiState, Redraw, Status, log_sanitizer},
+    ui::{GuiState, Rerender, Status, log_sanitizer},
 };
 pub use container_state::*;
 
@@ -122,7 +122,7 @@ pub struct AppData {
     error: Option<AppError>,
     filter: Filter,
     hidden_containers: Vec<ContainerItem>,
-    redraw: Arc<Redraw>,
+    redraw: Arc<Rerender>,
     sorted_by: Option<(Header, SortedOrder)>,
     current_sorted_id: Vec<ContainerId>,
     pub config: Config,
@@ -137,13 +137,13 @@ pub struct AppData {
     pub filter: Filter,
     pub hidden_containers: Vec<ContainerItem>,
     pub current_sorted_id: Vec<ContainerId>,
-    pub redraw: Arc<Redraw>,
+    pub redraw: Arc<Rerender>,
     pub sorted_by: Option<(Header, SortedOrder)>,
 }
 
 impl AppData {
     /// Generate a default app_state
-    pub fn new(config: Config, redraw: &Arc<Redraw>) -> Self {
+    pub fn new(config: Config, redraw: &Arc<Rerender>) -> Self {
         Self {
             config,
             containers: StatefulList::new(vec![]),
@@ -192,7 +192,7 @@ impl AppData {
     /// sets the state to start if any filtering has occurred
     /// Also search in the "hidden" vec for items and insert back into the main containers vec
     fn filter_containers(&mut self) {
-        self.redraw.set_true();
+        self.redraw.update();
         let pre_len = self.get_container_len();
 
         if !self.hidden_containers.is_empty() {
@@ -237,7 +237,7 @@ impl AppData {
             term.push(c);
         } else {
             self.filter.term = Some(format!("{c}"));
-        };
+        }
         self.filter_containers();
     }
 
@@ -275,7 +275,7 @@ impl AppData {
         while let Some(i) = self.hidden_containers.pop() {
             if self.get_container_by_id(&i.id).is_none() {
                 self.containers.items.push(i);
-            };
+            }
         }
         self.sort_containers();
     }
@@ -296,7 +296,7 @@ impl AppData {
     /// Remove the sorted header & order, and sort by default - created datetime
     pub fn reset_sorted(&mut self) {
         self.set_sorted(None);
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// Sort containers based on a given header, if headings match, and already ascending, remove sorting
@@ -392,7 +392,7 @@ impl AppData {
 
             self.containers.items.sort_by(sort_closure);
             if pre_order != self.get_current_ids() {
-                self.redraw.set_true();
+                self.redraw.update();
             }
         } else if self.current_sorted_id != self.get_current_ids() {
             self.containers.items.sort_by(|a, b| {
@@ -400,14 +400,21 @@ impl AppData {
                     .cmp(&b.created)
                     .then_with(|| a.name.get().cmp(b.name.get()))
             });
-            self.redraw.set_true();
+            self.redraw.update();
             self.current_sorted_id = self.get_current_ids();
         }
     }
 
     /// Container state methods
     /// Get the total number of none "hidden" containers
+    // TODO remove this once zigbuild uses Rust v1.87.0
+    #[cfg(target_os = "macos")]
     pub fn get_container_len(&self) -> usize {
+        self.containers.items.len()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub const fn get_container_len(&self) -> usize {
         self.containers.items.len()
     }
 
@@ -420,6 +427,8 @@ impl AppData {
     }
 
     /// Get all the ContainerItems
+    /// Thnk this allow block can be removed with the 1.87 release of Clippy
+    #[allow(clippy::missing_const_for_fn)]
     pub fn get_container_items(&self) -> &[ContainerItem] {
         &self.containers.items
     }
@@ -437,29 +446,29 @@ impl AppData {
     /// Select the first container
     pub fn containers_start(&mut self) {
         self.containers.start();
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// select the last container
     pub fn containers_end(&mut self) {
         self.containers.end();
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// Select the next container
     pub fn containers_next(&mut self) {
         self.containers.next();
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// select the previous container
     pub fn containers_previous(&mut self) {
         self.containers.previous();
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// Get ListState of containers
-    pub fn get_container_state(&mut self) -> &mut ListState {
+    pub const fn get_container_state(&mut self) -> &mut ListState {
         &mut self.containers.state
     }
 
@@ -577,7 +586,7 @@ impl AppData {
     pub fn docker_controls_next(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.docker_controls.next();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -585,7 +594,7 @@ impl AppData {
     pub fn docker_controls_previous(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.docker_controls.previous();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -593,7 +602,7 @@ impl AppData {
     pub fn docker_controls_start(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.docker_controls.start();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -601,7 +610,7 @@ impl AppData {
     pub fn docker_controls_end(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.docker_controls.end();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -639,7 +648,7 @@ impl AppData {
     pub fn log_next(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.logs.next();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -647,7 +656,7 @@ impl AppData {
     pub fn log_previous(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.logs.previous();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -655,7 +664,7 @@ impl AppData {
     pub fn log_end(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.logs.end();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
@@ -663,17 +672,17 @@ impl AppData {
     pub fn log_start(&mut self) {
         if let Some(i) = self.get_mut_selected_container() {
             i.logs.start();
-            self.redraw.set_true();
+            self.redraw.update();
         }
     }
 
     /// Get mutable Vec of current containers logs
-    pub fn get_logs(&self) -> Vec<ListItem<'static>> {
+    pub fn get_logs(&self, height: u16, padding: usize) -> Vec<ListItem<'static>> {
         self.containers
             .state
             .selected()
             .and_then(|i| self.containers.items.get(i))
-            .map_or(vec![], |i| i.logs.to_vec())
+            .map_or(vec![], |i| i.logs.to_vec(height.into(), padding))
     }
 
     /// Get mutable Option of the currently selected container Logs state
@@ -704,14 +713,14 @@ impl AppData {
     /// Remove single app_state error
     pub fn remove_error(&mut self) {
         self.error = None;
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// Insert single app_state error
     pub fn set_error(&mut self, error: AppError, gui_state: &Arc<Mutex<GuiState>>, status: Status) {
         gui_state.lock().status_push(status);
         self.error = Some(error);
-        self.redraw.set_true();
+        self.redraw.update();
     }
 
     /// Check if the selected container is a dockerised version of oxker
@@ -801,7 +810,7 @@ impl AppData {
             container.mem_limit.update(mem_limit);
         }
         if self.is_selected_container(id) {
-            self.redraw.set_true();
+            self.redraw.update();
         }
         self.sort_containers();
     }
@@ -839,7 +848,7 @@ impl AppData {
                 if self.containers.items.get(index).is_some() {
                     self.containers.items.remove(index);
                     if self.is_selected_container(id) {
-                        self.redraw.set_true();
+                        self.redraw.update();
                     }
                 }
             }
@@ -872,7 +881,6 @@ impl AppData {
                         .as_ref()
                         .map_or(String::new(), std::clone::Clone::clone),
                 );
-
                 let state = State::from((i.state.as_ref().map_or("dead", |z| z), &status));
                 let image = i
                     .image
@@ -886,10 +894,10 @@ impl AppData {
                 if let Some(item) = self.get_any_container_by_id(&id) {
                     if item.name.get() != name {
                         item.name.set(name);
-                    };
+                    }
                     if item.status != status {
                         item.status = status;
-                    };
+                    }
                     if item.state != state {
                         item.docker_controls.items = DockerCommand::gen_vec(state);
                         // Update the list state, needs to be None if the gen_vec returns an empty vec
@@ -898,15 +906,15 @@ impl AppData {
                                 item.docker_controls.state.select(None);
                             }
                             _ => item.docker_controls.start(),
-                        };
+                        }
                         item.state = state;
-                    };
+                    }
 
                     item.ports = ports;
 
                     if item.image.get() != image {
                         item.image.set(image);
-                    };
+                    }
                 } else {
                     // container not known, so make new ContainerItem and push into containers Ve
                     let container = ContainerItem::new(
@@ -969,7 +977,7 @@ impl AppData {
                 }
             }
             if self.is_selected_container(id) {
-                self.redraw.set_true();
+                self.redraw.update();
             }
         }
     }
@@ -1944,7 +1952,7 @@ mod tests {
         assert_eq!(result.as_ref().unwrap().selected(), Some(2));
         assert_eq!(result.unwrap().offset(), 0);
 
-        let result = app_data.get_logs();
+        let result = app_data.get_logs(4, 1);
         assert_eq!(result.len(), 3);
 
         let result = app_data.get_log_title();
@@ -2314,5 +2322,63 @@ mod tests {
 
         let result = app_data.get_log_state();
         assert!(result.is_none());
+    }
+
+    // *************** //
+    // Get logs method //
+    // *************** //
+
+    #[test]
+    /// get_logs() returns vec of item, but the items are empty unless they are in the *visible" zone, based on height, index, and padding
+    fn test_app_data_update_get_logs() {
+        let (ids, containers) = gen_containers();
+
+        let mut app_data = gen_appdata(&containers);
+
+        app_data.containers_start();
+        let logs = (0..=999).map(|i| format!("{i} {i}")).collect::<Vec<_>>();
+
+        app_data.update_log_by_id(logs, &ids[0]);
+
+        let result = app_data.get_logs(10, 10);
+        for (index, item) in result.iter().enumerate() {
+            if index < 979 {
+                assert_eq!(item, &ListItem::new(""));
+            } else {
+                assert_eq!(item, &ListItem::new(format!("{index}")));
+            }
+        }
+
+        let result = app_data.get_logs(100, 20);
+        for (index, item) in result.iter().enumerate() {
+            if index < 879 {
+                assert_eq!(item, &ListItem::new(""));
+            } else {
+                assert_eq!(item, &ListItem::new(format!("{index}")));
+            }
+        }
+
+        app_data.log_start();
+        let result = app_data.get_logs(10, 10);
+        for (index, item) in result.iter().enumerate() {
+            if index > 20 {
+                assert_eq!(item, &ListItem::new(""));
+            } else {
+                assert_eq!(item, &ListItem::new(format!("{index}")));
+            }
+        }
+
+        for _ in 0..=500 {
+            app_data.log_next();
+        }
+
+        let result = app_data.get_logs(10, 10);
+        for (index, item) in result.iter().enumerate() {
+            if (481..=521).contains(&index) {
+                assert_eq!(item, &ListItem::new(format!("{index}")));
+            } else {
+                assert_eq!(item, &ListItem::new(""));
+            }
+        }
     }
 }

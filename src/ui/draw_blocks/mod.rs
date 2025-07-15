@@ -35,12 +35,16 @@ a8"     "8a   `Y8, ,8P'   88 ,a8"    a8P_____88  88P'   "Y8
  `"YbbdP"'   8P'     `Y8  88   `Y8a   `"Ybbd8"'  88        "#;
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const MARGIN: &str = "   ";
 pub const RIGHT_ARROW: &str = "▶ ";
 pub const CIRCLE: &str = "⚪ ";
+
+#[cfg(not(test))]
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+#[cfg(test)]
+pub const VERSION: &str = "0.00.000";
 
 pub const CONSTRAINT_50_50: [Constraint; 2] =
     [Constraint::Percentage(50), Constraint::Percentage(50)];
@@ -117,13 +121,15 @@ pub mod tests {
         sync::Arc,
     };
 
+    use insta::assert_snapshot;
     use parking_lot::Mutex;
     use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
 
     use crate::{
         app_data::{AppData, ContainerId, ContainerImage, ContainerName, ContainerPorts},
+        app_error::AppError,
         tests::{gen_appdata, gen_containers},
-        ui::{GuiState, Redraw, draw_frame},
+        ui::{GuiState, Rerender, Status, draw_frame},
     };
 
     use super::FrameData;
@@ -147,32 +153,33 @@ pub mod tests {
         fn from(data: (&Arc<Mutex<AppData>>, &Arc<Mutex<GuiState>>)) -> Self {
             let (app_data, gui_data) = (data.0.lock(), data.1.lock());
 
-            // set max height for container section, needs +5 to deal with docker commands list and borders
-            let height = app_data.get_container_len();
-            let height = if height < 12 {
-                u16::try_from(height + 5).unwrap_or_default()
-            } else {
-                12
-            };
+            // let container_section_height = app_data.get_container_len();
+            // let container_section_height = if container_section_height < 12 {
+            //     u16::try_from(container_section_height + 5).unwrap_or_default()
+            // } else {
+            //     12
+            // };
 
             let (filter_by, filter_term) = app_data.get_filter();
             Self {
                 chart_data: app_data.get_chart_data(),
-                columns: app_data.get_width(),
                 color_logs: app_data.config.color_logs,
+                columns: app_data.get_width(),
+                // container_section_height,
                 container_title: app_data.get_container_title(),
                 delete_confirm: gui_data.get_delete_container(),
                 filter_by,
                 filter_term: filter_term.cloned(),
                 has_containers: app_data.get_container_len() > 0,
                 has_error: app_data.get_error(),
-                height,
-                ports: app_data.get_selected_ports(),
-                port_max_lens: app_data.get_longest_port(),
+                show_logs: gui_data.get_show_logs(),
                 info_text: gui_data.info_box_text.clone(),
                 is_loading: gui_data.is_loading(),
                 loading_icon: gui_data.get_loading().to_string(),
+                log_height: gui_data.get_log_height(),
                 log_title: app_data.get_log_title(),
+                port_max_lens: app_data.get_longest_port(),
+                ports: app_data.get_selected_ports(),
                 selected_panel: gui_data.get_selected_panel(),
                 sorted_by: app_data.get_sorted(),
                 status: gui_data.get_status(),
@@ -194,8 +201,8 @@ pub mod tests {
             app_data.containers_start();
         }
 
-        let redraw = Arc::new(Redraw::new());
-        let gui_state = GuiState::new(&redraw);
+        let redraw = Arc::new(Rerender::new());
+        let gui_state = GuiState::new(&redraw, app_data.config.show_logs);
 
         let app_data = Arc::new(Mutex::new(app_data));
         let gui_state = Arc::new(Mutex::new(gui_state));
@@ -211,25 +218,17 @@ pub mod tests {
         }
     }
 
-    /// Get a single row of String's from the expected data
-    pub fn expected_to_vec(expected: &[&str], row_index: usize) -> Vec<String> {
-        expected[row_index]
-            .chars()
-            .map(|i| i.to_string())
-            .collect::<Vec<_>>()
-    }
-
     /// Just a shorthand for when enumerating over result cells
     pub fn get_result(
         setup: &TuiTestSetup,
-        w: u16,
+        // w: u16,
     ) -> std::iter::Enumerate<std::slice::Chunks<ratatui::buffer::Cell>> {
         setup
             .terminal
             .backend()
             .buffer()
             .content
-            .chunks(usize::from(w))
+            .chunks(usize::from(setup.area.width))
             .enumerate()
     }
 
@@ -270,8 +269,7 @@ pub mod tests {
     #[test]
     /// Check that the whole layout is drawn correctly
     fn test_draw_blocks_whole_layout() {
-        let (w, h) = (160, 30);
-        let mut setup = test_setup(w, h, true, true);
+        let mut setup = test_setup(160, 30, true, true);
 
         insert_chart_data(&setup);
         insert_logs(&setup);
@@ -282,39 +280,6 @@ pub mod tests {
                 private: 8003,
                 public: Some(8003),
             });
-
-        let expected = [
-            "    name          state       status      cpu      memory/limit          id         image     ↓ rx      ↑ tx                                  ( h ) show help   ",
-            "╭ Containers 1/3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮╭──────────────╮",
-            "│⚪  container_1   ✓ running   Up 1 hour   03.00%   30.00 kB / 30.00 kB          1   image_1   0.00 kB   0.00 kB                                ││▶ pause       │",
-            "│   container_2   ✓ running   Up 2 hour   00.00%    0.00 kB /  0.00 kB          2   image_2   0.00 kB   0.00 kB                                ││  restart     │",
-            "│   container_3   ✓ running   Up 3 hour   00.00%    0.00 kB /  0.00 kB          3   image_3   0.00 kB   0.00 kB                                ││  stop        │",
-            "│                                                                                                                                              ││  delete      │",
-            "│                                                                                                                                              ││              │",
-            "│                                                                                                                                              ││              │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯╰──────────────╯",
-            "╭ Logs 3/3 - container_1 - image_1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
-            "│  line 1                                                                                                                                                      │",
-            "│  line 2                                                                                                                                                      │",
-            "│▶ line 3                                                                                                                                                      │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
-            "╭───────────────────────── cpu 03.00% ──────────────────────────╮╭─────────────────────── memory 30.00 kB ───────────────────────╮╭────────── ports ───────────╮",
-            "│10.00%│     ••••                                               ││100.00 kB│     •••                                             ││       ip   private   public│",
-            "│      │  •••   •                                               ││         │  •••  •                                             ││               8001         │",
-            "│      │••       •••                                            ││         │••      •••                                          ││127.0.0.1      8003     8003│",
-            "│      │                                                        ││         │                                                     ││                            │",
-            "╰───────────────────────────────────────────────────────────────╯╰───────────────────────────────────────────────────────────────╯╰────────────────────────────╯",
-        ];
         let colors = setup.app_data.lock().config.app_colors;
         let keymap = setup.app_data.lock().config.keymap.clone();
 
@@ -326,20 +291,14 @@ pub mod tests {
             })
             .unwrap();
 
-        for (row_index, result_row) in get_result(&setup, w) {
-            let expected_row = expected_to_vec(&expected, row_index);
-            for (result_cell_index, result_cell) in result_row.iter().enumerate() {
-                assert_eq!(result_cell.symbol(), expected_row[result_cell_index]);
-            }
-        }
+        assert_snapshot!(setup.terminal.backend());
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
     /// Check that the whole layout is drawn correctly
-    fn test_draw_blocks_whole_layout_with_filter() {
-        let (w, h) = (160, 30);
-        let mut setup = test_setup(w, h, true, true);
+    fn test_draw_blocks_whole_layout_with_filter_bar() {
+        let mut setup = test_setup(160, 30, true, true);
         insert_chart_data(&setup);
         insert_logs(&setup);
 
@@ -351,55 +310,8 @@ pub mod tests {
                 public: Some(8003),
             });
 
-        let expected = [
-            "    name          state       status      cpu      memory/limit          id         image     ↓ rx      ↑ tx                                  ( h ) show help   ",
-            "╭ Containers 1/3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮╭──────────────╮",
-            "│⚪  container_1   ✓ running   Up 1 hour   03.00%   30.00 kB / 30.00 kB          1   image_1   0.00 kB   0.00 kB                                ││▶ pause       │",
-            "│   container_2   ✓ running   Up 2 hour   00.00%    0.00 kB /  0.00 kB          2   image_2   0.00 kB   0.00 kB                                ││  restart     │",
-            "│   container_3   ✓ running   Up 3 hour   00.00%    0.00 kB /  0.00 kB          3   image_3   0.00 kB   0.00 kB                                ││  stop        │",
-            "│                                                                                                                                              ││  delete      │",
-            "│                                                                                                                                              ││              │",
-            "│                                                                                                                                              ││              │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯╰──────────────╯",
-            "╭ Logs 3/3 - container_1 - image_1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
-            "│  line 1                                                                                                                                                      │",
-            "│  line 2                                                                                                                                                      │",
-            "│▶ line 3                                                                                                                                                      │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
-            "╭───────────────────────── cpu 03.00% ──────────────────────────╮╭─────────────────────── memory 30.00 kB ───────────────────────╮╭────────── ports ───────────╮",
-            "│10.00%│     ••••                                               ││100.00 kB│     •••                                             ││       ip   private   public│",
-            "│      │  •••   •                                               ││         │  •••  •                                             ││               8001         │",
-            "│      │••       •••                                            ││         │••      •••                                          ││                            │",
-            "│      │                                                        ││         │                                                     ││                            │",
-            "╰───────────────────────────────────────────────────────────────╯╰───────────────────────────────────────────────────────────────╯╰────────────────────────────╯",
-        ];
-        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
         let colors = setup.app_data.lock().config.app_colors;
         let keymap = setup.app_data.lock().config.keymap.clone();
-        setup
-            .terminal
-            .draw(|f| {
-                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
-            })
-            .unwrap();
-
-        for (row_index, result_row) in get_result(&setup, w) {
-            let expected_row = expected_to_vec(&expected, row_index);
-            for (result_cell_index, result_cell) in result_row.iter().enumerate() {
-                assert_eq!(result_cell.symbol(), expected_row[result_cell_index]);
-            }
-        }
-
         setup
             .gui_state
             .lock()
@@ -407,39 +319,6 @@ pub mod tests {
         setup.app_data.lock().filter_term_push('r');
         setup.app_data.lock().filter_term_push('_');
         setup.app_data.lock().filter_term_push('1');
-
-        let expected = [
-            "    name          state       status      cpu      memory/limit          id         image     ↓ rx      ↑ tx                                  ( h ) show help   ",
-            "╭ Containers 1/1 - filtered ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮╭──────────────╮",
-            "│⚪  container_1   ✓ running   Up 1 hour   03.00%   30.00 kB / 30.00 kB          1   image_1   0.00 kB   0.00 kB                                ││▶ pause       │",
-            "│                                                                                                                                              ││  restart     │",
-            "│                                                                                                                                              ││  stop        │",
-            "│                                                                                                                                              ││  delete      │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯╰──────────────╯",
-            "╭ Logs 3/3 - container_1 - image_1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
-            "│  line 1                                                                                                                                                      │",
-            "│  line 2                                                                                                                                                      │",
-            "│▶ line 3                                                                                                                                                      │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "│                                                                                                                                                              │",
-            "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
-            "╭───────────────────────── cpu 03.00% ──────────────────────────╮╭─────────────────────── memory 30.00 kB ───────────────────────╮╭────────── ports ───────────╮",
-            "│10.00%│      •••                                               ││100.00 kB│      ••                                             ││       ip   private   public│",
-            "│      │    ••  •                                               ││         │    •• •                                             ││               8001         │",
-            "│      │ •••     • •                                            ││         │ •••    • •                                          ││                            │",
-            "│      │•        ••                                             ││         │•       ••                                           ││                            │",
-            "│      │                                                        ││         │                                                     ││                            │",
-            "╰───────────────────────────────────────────────────────────────╯╰───────────────────────────────────────────────────────────────╯╰────────────────────────────╯",
-            " Esc  clear  ← by →   Name  Image  Status  All  term: r_1                                                                                                       ",
-        ];
         let fd = FrameData::from((&setup.app_data, &setup.gui_state));
         setup
             .terminal
@@ -448,19 +327,13 @@ pub mod tests {
             })
             .unwrap();
 
-        for (row_index, result_row) in get_result(&setup, w) {
-            let expected_row = expected_to_vec(&expected, row_index);
-            for (result_cell_index, result_cell) in result_row.iter().enumerate() {
-                assert_eq!(result_cell.symbol(), expected_row[result_cell_index]);
-            }
-        }
+        assert_snapshot!(setup.terminal.backend());
     }
 
     #[test]
     /// Check that the whole layout is drawn correctly when have long container name and long image name
     fn test_draw_blocks_whole_layout_long_name() {
-        let (w, h) = (190, 30);
-        let mut setup = test_setup(w, h, true, true);
+        let mut setup = test_setup(190, 30, true, true);
 
         insert_chart_data(&setup);
         insert_logs(&setup);
@@ -477,38 +350,6 @@ pub mod tests {
         setup.app_data.lock().containers.items[0].image =
             ContainerImage::from("a_long_image_name_for_the_purposes_of_this_test");
 
-        let expected = [
-            "    name                             state       status      cpu      memory/limit          id         image                            ↓ rx      ↑ tx                      ( h ) show help   ",
-            "╭ Containers 1/3 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮╭─────────────────╮",
-            "│⚪  a_long_container_name_for_the…   ✓ running   Up 1 hour   03.00%   30.00 kB / 30.00 kB          1   a_long_image_name_for_the_pur…   0.00 kB   0.00 kB                 ││▶ pause          │",
-            "│   container_2                      ✓ running   Up 2 hour   00.00%    0.00 kB /  0.00 kB          2   image_2                          0.00 kB   0.00 kB                 ││  restart        │",
-            "│   container_3                      ✓ running   Up 3 hour   00.00%    0.00 kB /  0.00 kB          3   image_3                          0.00 kB   0.00 kB                 ││  stop           │",
-            "│                                                                                                                                                                         ││  delete         │",
-            "│                                                                                                                                                                         ││                 │",
-            "│                                                                                                                                                                         ││                 │",
-            "╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯╰─────────────────╯",
-            "╭ Logs 3/3 - a_long_container_name_for_the_purposes_of_this_test - a_long_image_name_for_the_purposes_of_this_test ──────────────────────────────────────────────────────────────────────────╮",
-            "│  line 1                                                                                                                                                                                    │",
-            "│  line 2                                                                                                                                                                                    │",
-            "│▶ line 3                                                                                                                                                                                    │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "│                                                                                                                                                                                            │",
-            "╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
-            "╭───────────────────────────────── cpu 03.00% ─────────────────────────────────╮╭────────────────────────────── memory 30.00 kB ───────────────────────────────╮╭────────── ports ───────────╮",
-            "│10.00%│       ••••                                                            ││100.00 kB│      •••••                                                         ││       ip   private   public│",
-            "│      │   ••••   •                                                            ││         │   •••    •                                                         ││               8001         │",
-            "│      │•••        ••••                                                        ││         │•••        •••                                                      ││127.0.0.1      8003     8003│",
-            "│      │                                                                       ││         │                                                                    ││                            │",
-            "╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰────────────────────────────╯",
-        ];
         let fd = FrameData::from((&setup.app_data, &setup.gui_state));
         let colors = setup.app_data.lock().config.app_colors;
         let keymap = setup.app_data.lock().config.keymap.clone();
@@ -519,11 +360,191 @@ pub mod tests {
             })
             .unwrap();
 
-        for (row_index, result_row) in get_result(&setup, w) {
-            let expected_row = expected_to_vec(&expected, row_index);
-            for (result_cell_index, result_cell) in result_row.iter().enumerate() {
-                assert_eq!(result_cell.symbol(), expected_row[result_cell_index]);
-            }
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn correctly when the logs panel is removed
+    fn test_draw_blocks_whole_layout_no_logs() {
+        let mut setup = test_setup(160, 30, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+        setup.gui_state.lock().log_height_zero();
+
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn correctly when the logs panel height is ~4
+    fn test_draw_blocks_whole_layout_short_height_logs() {
+        let mut setup = test_setup(160, 30, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+        setup.gui_state.lock().log_height_zero();
+
+        for _ in 0..=3 {
+            setup.gui_state.lock().log_height_increase();
         }
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn with the help panel visible
+    fn test_draw_blocks_whole_layout_help_panel() {
+        let mut setup = test_setup(160, 40, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+
+        setup.gui_state.lock().status_push(Status::Help);
+
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn with the error box is visible
+    fn test_draw_blocks_whole_layout_error() {
+        let mut setup = test_setup(160, 40, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+
+        setup.app_data.lock().set_error(
+            AppError::DockerCommand(crate::app_data::DockerCommand::Pause),
+            &setup.gui_state,
+            Status::Error,
+        );
+
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn with the delete box is visible
+    fn test_draw_blocks_whole_layout_delete() {
+        let mut setup = test_setup(160, 40, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+        setup
+            .gui_state
+            .lock()
+            .set_delete_container(setup.app_data.lock().get_selected_container_id());
+
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
+    }
+
+    #[test]
+    /// Check that the whole layout is drawn with the info box is visible
+    fn test_draw_blocks_whole_layout_info_box() {
+        let mut setup = test_setup(160, 40, true, true);
+
+        insert_chart_data(&setup);
+        insert_logs(&setup);
+        setup.app_data.lock().containers.items[0]
+            .ports
+            .push(ContainerPorts {
+                ip: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                private: 8003,
+                public: Some(8003),
+            });
+        let colors = setup.app_data.lock().config.app_colors;
+        let keymap = setup.app_data.lock().config.keymap.clone();
+        setup.gui_state.lock().set_info_box("This is a test");
+        let fd = FrameData::from((&setup.app_data, &setup.gui_state));
+        setup
+            .terminal
+            .draw(|f| {
+                draw_frame(&setup.app_data, colors, &keymap, f, &fd, &setup.gui_state);
+            })
+            .unwrap();
+
+        assert_snapshot!(setup.terminal.backend());
     }
 }

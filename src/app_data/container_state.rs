@@ -30,12 +30,20 @@ impl From<&str> for ContainerId {
 }
 
 impl ContainerId {
+    // TODO remove this once zigbuild uses Rust v1.87.0
+    #[cfg(target_os = "macos")]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn get(&self) -> &str {
         self.0.as_str()
     }
 
+    #[cfg(not(target_os = "macos"))]
+    pub const fn get(&self) -> &str {
+        self.0.as_str()
+    }
+
     /// Only return first 8 chars of id, is usually more than enough for uniqueness
-    /// TODO container id is a hex string, so can assume that 0..=8 will always return a 8 char ascii &str - need to update tests to use real ids, or atleast strings of the correct-ish length
+    /// need to update tests to use real ids, or atleast strings of the correct-ish length
     pub fn get_short(&self) -> String {
         self.0.chars().take(8).collect::<String>()
     }
@@ -76,7 +84,15 @@ macro_rules! unit_struct {
         }
 
         impl $name {
+            #[cfg(target_os = "macos")]
+            #[allow(clippy::missing_const_for_fn)]
+            // TODO remove this once zigbuild uses Rust v1.87.0
             pub fn get(&self) -> &str {
+                self.0.as_str()
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            pub const fn get(&self) -> &str {
                 self.0.as_str()
             }
 
@@ -481,7 +497,7 @@ impl ByteStats {
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
-    pub fn update(&mut self, value: u64) {
+    pub const fn update(&mut self, value: u64) {
         self.0 = value;
     }
 }
@@ -544,7 +560,7 @@ impl LogsTz {
 
 /// Store the logs alongside a HashSet, each log *should* generate a unique timestamp,
 /// so if we store the timestamp separately in a HashSet, we can then check if we should insert a log line into the
-/// stateful list dependent on whethere the timestamp is in the HashSet or not
+/// stateful list dependent on whether the timestamp is in the HashSet or not
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Logs {
     logs: StatefulList<ListItem<'static>>,
@@ -567,13 +583,27 @@ impl Logs {
     pub fn insert(&mut self, line: ListItem<'static>, tz: LogsTz) {
         if self.tz.insert(tz) {
             self.logs.items.push(line);
-        };
+        }
     }
 
-    pub fn to_vec(&self) -> Vec<ListItem<'static>> {
-        self.logs.items.clone()
+    /// Get the logs vec, but instead of cloning to whole vec, only clone items with x of the currently selected index
+    /// Where x is the abs different of the index plus the panel height & a padding
+    /// The rest can be just empty list items
+    pub fn to_vec(&self, height: usize, padding: usize) -> Vec<ListItem<'static>> {
+        let current_index = self.logs.state.selected().unwrap_or_default();
+        self.logs
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                if current_index.abs_diff(index) <= height + padding {
+                    item.clone()
+                } else {
+                    ListItem::from("")
+                }
+            })
+            .collect()
     }
-
     /// The rest of the methods are basically forwarding from the underlying StatefulList
     pub fn get_state_title(&self) -> String {
         self.logs.get_state_title()
@@ -594,11 +624,19 @@ impl Logs {
         self.logs.start();
     }
 
+    // TODO remove this once zigbuild uses Rust v1.87.0
+    #[cfg(target_os = "macos")]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn len(&self) -> usize {
         self.logs.items.len()
     }
 
-    pub fn state(&mut self) -> &mut ListState {
+    #[cfg(not(target_os = "macos"))]
+    pub const fn len(&self) -> usize {
+        self.logs.items.len()
+    }
+
+    pub const fn state(&mut self) -> &mut ListState {
         &mut self.logs.state
     }
 }
